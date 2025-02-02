@@ -1,9 +1,9 @@
 {
-	"id": "clean-frontmatter",
-	"name": "Clean Frontmatter",
+	"id": "Obsidian-omg",
+	"name": "Obsidian OMG",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "A plugin to clean up front matter in Obsidian files in my personal way.",
+	"description": "My personal helper plugin.",
 	"author": "Obsidian",
 	"authorUrl": "https://obsidian.md",
 	"fundingUrl": "https://obsidian.md/pricing",

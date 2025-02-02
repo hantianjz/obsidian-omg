@@ -1,134 +1,133 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { Plugin, Notice } from "obsidian";
+import yaml from "js-yaml";
 
-// Remember to rename these classes and interfaces!
-
-interface MyPluginSettings {
-	mySetting: string;
-}
-
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
-}
-
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
-
+export default class ObsidianOMGPlugin extends Plugin {
 	async onload() {
-		await this.loadSettings();
+		console.log("Obsidian OMG Plugin loaded!");
 
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
-
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
-
-		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
+			id: "fix-frontmatter",
+			name: "Fix Frontmatter in Current File",
+			callback: () => this.fixFrontmatter(),
+		});
+
+		this.addCommand({
+			id: "fix-all-frontmatter",
+			name: "Fix Frontmatter in the WHOLE VAULT!!",
+			callback: () => this.fixAllFrontmatter(),
+		});
+	}
+
+	async fixFrontmatter() {
+		const activeFile = this.app.workspace.getActiveFile();
+		if (!activeFile) {
+			new Notice("No active file found.");
+			return;
+		}
+
+		try {
+			const content = await this.app.vault.read(activeFile);
+			const updatedContent = this.modifyFrontmatter(content);
+
+			if (updatedContent) {
+				await this.app.vault.modify(activeFile, updatedContent);
+				new Notice("Frontmatter updated successfully!");
+			} else {
+				new Notice("No frontmatter found to update.");
 			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
+		} catch (error) {
+			new Notice("Failed to update frontmatter.");
+		}
+	}
+
+	async fixAllFrontmatter() {
+		const files = this.app.vault.getFiles();
+
+		let count = 0;
+
+		// Iterate through each file
+		for (const file of files) {
+			// Check if the file is a markdown file
+			if (file.extension === "md") {
+				try {
+					const content = await this.app.vault.read(file);
+					const updatedContent = this.modifyFrontmatter(content);
+
+					if (updatedContent) {
+						await this.app.vault.modify(file, updatedContent);
+						count += 1;
 					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
+				} catch (error) {
+					new Notice(
+						`Failed to update frontmatter for ${file.name}.`,
+					);
+					break;
 				}
 			}
+		}
+
+		new Notice(`Update frontmatter for ${count} files.`);
+	}
+
+	modifyFrontmatter(content: string): string | null {
+		const match = content.match(/^---\n([\s\S]*?)\n---\n?/);
+		if (!match) return null;
+
+		let frontmatter = match[1];
+		const body = content.replace(match[0], ""); // Remove old frontmatter
+
+		try {
+			// Parse YAML into an object
+			const parsedData = yaml.load(frontmatter) as Record<string, any>;
+
+			parsedData.link = this.fixFrontmatterLinks(
+				this.getStringListIfNot(parsedData.link),
+			);
+			parsedData.tags = this.getStringListIfNot(parsedData.tags);
+
+			// Remove unwanted entry
+			const toRemoveList: string[] = [
+				"reviewed",
+				"publish",
+				"review-frequency",
+			];
+			toRemoveList.forEach((item) => {
+				if (parsedData[item] !== undefined) {
+					delete parsedData[item];
+				}
+			});
+
+			// Convert back to YAML string
+			const newFrontmatter = yaml.dump(parsedData);
+
+			// Reconstruct file content with updated frontmatter
+			return `---\n${newFrontmatter}---\n${body}`;
+		} catch (error) {
+			console.error("Error parsing YAML:", error);
+			return null;
+		}
+	}
+
+	// If entry is a string type, it is probably a single item we should convert it to a list
+	getStringListIfNot(entry: string[] | string) {
+		if (typeof entry === "string") {
+			const newList: string[] = [entry];
+			return newList;
+		}
+		return entry;
+	}
+
+	fixFrontmatterLinks(links: string[]) {
+		let newLinks: string[] = [];
+		links.forEach((link) => {
+			const match = link.match(/^\[\[(.*)\]\]$/);
+			const linkName = match ? match[1].trim() : link.trim();
+			const newLinkName =
+				linkName.charAt(0).toUpperCase() + linkName.slice(1);
+
+			// Make sure link is converted to an internal link
+			newLinks.push(`[[${newLinkName}]]`);
 		});
-
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-	}
-
-	onunload() {
-
-	}
-
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
-
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
-}
-
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
-
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
-
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
-
-	constructor(app: App, plugin: MyPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const {containerEl} = this;
-
-		containerEl.empty();
-
-		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
-				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
+		return newLinks;
 	}
 }
