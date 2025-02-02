@@ -101,8 +101,13 @@ export default class ObsidianOMGPlugin extends Plugin {
 			});
 
 			// Ensure aliases entry exist or set to file title
-			if (parsedData["aliases"] !== undefined) {
-				parsedData["aliases"] = file.name;
+			if (
+				parsedData.aliases === undefined ||
+				parsedData.aliases === null
+			) {
+				parsedData.aliases = [file.basename];
+			} else if (typeof parsedData.aliases === "string") {
+				parsedData.aliases = [parsedData.aliases];
 			}
 
 			// Convert back to YAML string
@@ -127,15 +132,17 @@ export default class ObsidianOMGPlugin extends Plugin {
 
 	fixFrontmatterLinks(links: string[]) {
 		let newLinks: string[] = [];
-		links.forEach((link) => {
-			const match = link.match(/^\[\[(.*)\]\]$/);
-			const linkName = match ? match[1].trim() : link.trim();
-			const newLinkName =
-				linkName.charAt(0).toUpperCase() + linkName.slice(1);
+		if (links) {
+			links.forEach((link) => {
+				const match = link.match(/^\[\[(.*)\]\]$/);
+				const linkName = match ? match[1].trim() : link.trim();
+				const newLinkName =
+					linkName.charAt(0).toUpperCase() + linkName.slice(1);
 
-			// Make sure link is converted to an internal link
-			newLinks.push(`[[${newLinkName}]]`);
-		});
+				// Make sure link is converted to an internal link
+				newLinks.push(`[[${newLinkName}]]`);
+			});
+		}
 		return newLinks;
 	}
 }
