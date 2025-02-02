@@ -1,4 +1,4 @@
-import { Plugin, Notice } from "obsidian";
+import { Plugin, Notice, TFile } from "obsidian";
 import yaml from "js-yaml";
 
 export default class ObsidianOMGPlugin extends Plugin {
@@ -27,7 +27,7 @@ export default class ObsidianOMGPlugin extends Plugin {
 
 		try {
 			const content = await this.app.vault.read(activeFile);
-			const updatedContent = this.modifyFrontmatter(content);
+			const updatedContent = this.modifyFrontmatter(activeFile, content);
 
 			if (updatedContent) {
 				await this.app.vault.modify(activeFile, updatedContent);
@@ -51,7 +51,10 @@ export default class ObsidianOMGPlugin extends Plugin {
 			if (file.extension === "md") {
 				try {
 					const content = await this.app.vault.read(file);
-					const updatedContent = this.modifyFrontmatter(content);
+					const updatedContent = this.modifyFrontmatter(
+						file,
+						content,
+					);
 
 					if (updatedContent) {
 						await this.app.vault.modify(file, updatedContent);
@@ -69,7 +72,7 @@ export default class ObsidianOMGPlugin extends Plugin {
 		new Notice(`Update frontmatter for ${count} files.`);
 	}
 
-	modifyFrontmatter(content: string): string | null {
+	modifyFrontmatter(file: TFile, content: string): string | null {
 		const match = content.match(/^---\n([\s\S]*?)\n---\n?/);
 		if (!match) return null;
 
@@ -96,6 +99,11 @@ export default class ObsidianOMGPlugin extends Plugin {
 					delete parsedData[item];
 				}
 			});
+
+			// Ensure aliases entry exist or set to file title
+			if (parsedData["aliases"] !== undefined) {
+				parsedData["aliases"] = file.name;
+			}
 
 			// Convert back to YAML string
 			const newFrontmatter = yaml.dump(parsedData);
